@@ -3,7 +3,7 @@ use std::collections::BinaryHeap;
 use std::u32;
 
 pub struct Mem {
-    data: Vec<Option<Vec<u32>>>,
+    data: Vec<Option<Box<[u32]>>>,
     free_pq: BinaryHeap<Reverse<u32>>,
     len: u32, // FIXME: this is not actually needed for now, we can just use data.len()
 }
@@ -25,13 +25,16 @@ impl Mem {
         match self.free_pq.pop() {
             Some(Reverse(addr)) => {
                 let v = vec![0; size as usize];
-                self.data[addr as usize] = Some(v);
+                self.data[addr as usize] = Some(v.into_boxed_slice());
                 addr
             }
 
             None => {
+                if self.len() == u32::MAX {
+                    panic!("Memory exhausted");
+                }
                 let v = vec![0; size as usize];
-                self.data.push(Some(v));
+                self.data.push(Some(v.into_boxed_slice()));
                 self.len += 1;
                 self.len - 1
             }
@@ -40,9 +43,8 @@ impl Mem {
 
     pub fn free(&mut self, addr: u32) {
         match self.data.get_mut(addr as usize) {
-            Some(Some(v)) => {
-                v.clear(); // FIXME: is that needed?
-                self.data[addr as usize] = None;
+            Some(v @ Some(_)) => {
+                *v = None;
                 self.free_pq.push(Reverse(addr));
             }
             Some(None) => panic!(
@@ -53,8 +55,26 @@ impl Mem {
         }
     }
 
+    pub fn free2(&mut self, addr: u32) {
+        let block = self
+            .data
+            .get_mut(addr as usize)
+            .unwrap_or_else(|| panic!("free: attempt to free unallocated address {}", addr));
+
+        match block {
+            None => panic!(
+                "free: attempt to free address {} which is already free",
+                addr
+            ),
+            b => {
+                *b = None;
+                self.free_pq.push(Reverse(addr));
+            }
+        }
+    }
+
     pub fn read(&self, addr: u32, offset: u32) -> &u32 {
-        match &self.data.get(addr as usize) {
+        match self.data.get(addr as usize) {
             Some(Some(v)) => match v.get(offset as usize) {
                 Some(val) => val,
                 None => panic!(
@@ -67,6 +87,24 @@ impl Mem {
             Some(None) => panic!("read: address {} has been deallocated", addr),
             None => panic!("read: address {} has not been allocated", addr),
         }
+    }
+
+    pub fn read2(&self, addr: u32, offset: u32) -> &u32 {
+        let block = self
+            .data
+            .get(addr as usize)
+            .unwrap_or_else(|| panic!("read: address {} has not been allocated", addr))
+            .as_ref()
+            .unwrap_or_else(|| panic!("read: address {} has been deallocated", addr));
+
+        block.get(offset as usize).unwrap_or_else(|| {
+            panic!(
+                "read: offset {} is out of bounds for address {} (len: {})",
+                offset,
+                addr,
+                block.len()
+            )
+        })
     }
 
     pub fn write(&mut self, addr: u32, offset: u32, val: u32) {
@@ -85,6 +123,26 @@ impl Mem {
             }
             Some(None) => panic!("write: address {} has been deallocated", addr),
             None => panic!("write: address {} has not been allocated", addr),
+        }
+    }
+
+    pub fn write2(&mut self, addr: u32, offset: u32, val: u32) {
+        let block = self
+            .data
+            .get_mut(addr as usize)
+            .unwrap_or_else(|| panic!("write: address {} has not been allocated", addr))
+            .as_mut()
+            .unwrap_or_else(|| panic!("write: address {} has been deallocated", addr));
+
+        if (offset as usize) < block.len() {
+            block[offset as usize] = val;
+        } else {
+            panic!(
+                "write: offset {} is out of bounds for address {} (len: {})",
+                offset,
+                addr,
+                block.len()
+            );
         }
     }
 }
