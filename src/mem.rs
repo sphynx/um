@@ -23,13 +23,15 @@ impl Mem {
     }
 
     pub fn copy_to_zero(&mut self, addr: u32) {
-        self.data[0] = match self.data.get(addr as usize) {
-            Some(Some(v)) => Some(v.clone()),
-            Some(None) => panic!("copy_to_zero: attempt to copy from freed address {}", addr),
-            None => panic!(
-                "copy_to_zero: attempt to copy from unallocated address {}",
-                addr
-            ),
+        if addr != 0 {
+            self.data[0] = match self.data.get(addr as usize) {
+                Some(Some(v)) => Some(v.clone()),
+                Some(None) => panic!("copy_to_zero: attempt to copy from freed address {}", addr),
+                None => panic!(
+                    "copy_to_zero: attempt to copy from unallocated address {}",
+                    addr
+                ),
+            }
         }
     }
 

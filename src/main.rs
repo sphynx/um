@@ -37,7 +37,7 @@ impl Machine {
     }
 
     fn run(&mut self) {
-        //ncurses::initscr();
+        ncurses::initscr();
 
         loop {
             let word = self.mem.read(0, self.ip);
@@ -107,17 +107,19 @@ impl Machine {
                 Op::LoadProgram(b, c) => {
                     self.mem.copy_to_zero(self.reg[b]);
                     self.ip = self.reg[c];
+                    continue;
                 }
 
                 Op::Mov(a, val) => {
                     self.reg[a] = val;
+
                 }
             }
 
             self.ip += 1;
         }
 
-        // ncurses::endwin();
+        ncurses::endwin();
     }
 }
 
@@ -173,6 +175,7 @@ fn main() -> io::Result<()> {
     println!("Welcome to the machine.");
 
     let prog = fs::read("codex.umz")?;
+    // let prog = fs::read("sandmark.umz")?;
     let mut um = Machine::load(&prog);
     um.run();
 
