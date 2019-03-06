@@ -5,7 +5,6 @@ use std::u32;
 pub struct Mem {
     data: Vec<Option<Box<[u32]>>>,
     free_pq: BinaryHeap<Reverse<u32>>,
-    len: u32, // FIXME: this is not actually needed for now, we can just use data.len()
 }
 
 impl Mem {
@@ -13,12 +12,29 @@ impl Mem {
         Mem {
             data: Vec::new(),
             free_pq: BinaryHeap::new(),
-            len: 0,
+        }
+    }
+
+    pub fn init(prog: Vec<u32>) -> Self {
+        Mem {
+            data: vec![Some(prog.into_boxed_slice())],
+            free_pq: BinaryHeap::new(),
+        }
+    }
+
+    pub fn copy_to_zero(&mut self, addr: u32) {
+        self.data[0] = match self.data.get(addr as usize) {
+            Some(Some(v)) => Some(v.clone()),
+            Some(None) => panic!("copy_to_zero: attempt to copy from freed address {}", addr),
+            None => panic!(
+                "copy_to_zero: attempt to copy from unallocated address {}",
+                addr
+            ),
         }
     }
 
     pub fn len(&self) -> u32 {
-        self.len
+        self.data.len() as u32
     }
 
     pub fn alloc(&mut self, size: u32) -> u32 {
@@ -31,17 +47,20 @@ impl Mem {
 
             None => {
                 if self.len() == u32::MAX {
-                    panic!("Memory exhausted");
+                    panic!("alloc: memory exhausted");
                 }
                 let v = vec![0; size as usize];
                 self.data.push(Some(v.into_boxed_slice()));
-                self.len += 1;
-                self.len - 1
+                self.len() - 1
             }
         }
     }
 
     pub fn free(&mut self, addr: u32) {
+        if addr == 0 {
+            panic!("free: tried to free memory at program location (0)");
+        }
+
         match self.data.get_mut(addr as usize) {
             Some(v @ Some(_)) => {
                 *v = None;
