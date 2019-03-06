@@ -1,8 +1,10 @@
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
-use ncurses;
+use byteorder::WriteBytesExt;
+use std::env;
 use std::fs;
 use std::io;
+use std::io::Write;
 use um::mem::Mem;
 
 struct Machine {
@@ -12,8 +14,8 @@ struct Machine {
 }
 
 impl Machine {
-    // Here we convert from bytes (u8) to our VM words (u32).
     fn load(bytes: &[u8]) -> Self {
+        // Here we convert from bytes (u8) to our VM words (u32).
         assert_eq!(
             bytes.len() % 4,
             0,
@@ -37,8 +39,7 @@ impl Machine {
     }
 
     fn run(&mut self) {
-        ncurses::initscr();
-
+        let mut input = String::new();
         loop {
             let word = self.mem.read(0, self.ip);
             let op = parse_op(*word);
@@ -68,7 +69,7 @@ impl Machine {
 
                 Op::Div(a, b, c) => {
                     if self.reg[c] == 0 {
-                        panic!("Division by zero!");
+                        panic!("vm: division by zero!");
                     }
                     self.reg[a] = self.reg[b].wrapping_div(self.reg[c]);
                 }
@@ -78,7 +79,6 @@ impl Machine {
                 }
 
                 Op::Halt => {
-                    println!("\nHalting the machine");
                     break;
                 }
 
@@ -93,33 +93,42 @@ impl Machine {
                 Op::Output(c) => {
                     let chr = self.reg[c];
                     if chr > 255 {
-                        panic!("character for output > 255: {}", chr);
+                        panic!("vm: character for output > 255: {}", chr);
                     }
-                    print!("{}", (chr as u8) as char);
+                    // FIXME: handle errors better
+                    io::stdout().write_u8(chr as u8).unwrap();
+                    io::stdout().flush().unwrap();
                 }
 
                 Op::Input(c) => {
-                    // FIXME: check if it works
-                    let chr = ncurses::getch();
-                    self.reg[c] = chr as u32;
+                    if input.len() == 0 {
+                        // Read a new line of input.
+                        io::stdin().read_line(&mut input).unwrap();
+                    }
+
+                    if input.len() == 0 {
+                        // If it's still empty, this means we've got EOF,
+                        // treat it as terminate.
+                        println!("");
+                        break;
+                    } else {
+                        self.reg[c] = input.remove(0) as u32;
+                    }
                 }
 
                 Op::LoadProgram(b, c) => {
                     self.mem.copy_to_zero(self.reg[b]);
                     self.ip = self.reg[c];
-                    continue;
+                    continue; // to skip 'ip += 1'
                 }
 
                 Op::Mov(a, val) => {
                     self.reg[a] = val;
-
                 }
             }
 
             self.ip += 1;
         }
-
-        ncurses::endwin();
     }
 }
 
@@ -172,12 +181,9 @@ fn parse_op(v: u32) -> Op {
 }
 
 fn main() -> io::Result<()> {
-    println!("Welcome to the machine.");
-
-    let prog = fs::read("codex.umz")?;
-    // let prog = fs::read("sandmark.umz")?;
+    let args: Vec<String> = env::args().collect();
+    let prog = fs::read(&args[1])?;
     let mut um = Machine::load(&prog);
     um.run();
-
     Ok(())
 }

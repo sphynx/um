@@ -8,13 +8,6 @@ pub struct Mem {
 }
 
 impl Mem {
-    pub fn new() -> Self {
-        Mem {
-            data: Vec::new(),
-            free_pq: BinaryHeap::new(),
-        }
-    }
-
     pub fn init(prog: Vec<u32>) -> Self {
         Mem {
             data: vec![Some(prog.into_boxed_slice())],
@@ -76,24 +69,6 @@ impl Mem {
         }
     }
 
-    pub fn free2(&mut self, addr: u32) {
-        let block = self
-            .data
-            .get_mut(addr as usize)
-            .unwrap_or_else(|| panic!("free: attempt to free unallocated address {}", addr));
-
-        match block {
-            None => panic!(
-                "free: attempt to free address {} which is already free",
-                addr
-            ),
-            b => {
-                *b = None;
-                self.free_pq.push(Reverse(addr));
-            }
-        }
-    }
-
     pub fn read(&self, addr: u32, offset: u32) -> &u32 {
         match self.data.get(addr as usize) {
             Some(Some(v)) => match v.get(offset as usize) {
@@ -108,24 +83,6 @@ impl Mem {
             Some(None) => panic!("read: address {} has been deallocated", addr),
             None => panic!("read: address {} has not been allocated", addr),
         }
-    }
-
-    pub fn read2(&self, addr: u32, offset: u32) -> &u32 {
-        let block = self
-            .data
-            .get(addr as usize)
-            .unwrap_or_else(|| panic!("read: address {} has not been allocated", addr))
-            .as_ref()
-            .unwrap_or_else(|| panic!("read: address {} has been deallocated", addr));
-
-        block.get(offset as usize).unwrap_or_else(|| {
-            panic!(
-                "read: offset {} is out of bounds for address {} (len: {})",
-                offset,
-                addr,
-                block.len()
-            )
-        })
     }
 
     pub fn write(&mut self, addr: u32, offset: u32, val: u32) {
@@ -146,26 +103,6 @@ impl Mem {
             None => panic!("write: address {} has not been allocated", addr),
         }
     }
-
-    pub fn write2(&mut self, addr: u32, offset: u32, val: u32) {
-        let block = self
-            .data
-            .get_mut(addr as usize)
-            .unwrap_or_else(|| panic!("write: address {} has not been allocated", addr))
-            .as_mut()
-            .unwrap_or_else(|| panic!("write: address {} has been deallocated", addr));
-
-        if (offset as usize) < block.len() {
-            block[offset as usize] = val;
-        } else {
-            panic!(
-                "write: offset {} is out of bounds for address {} (len: {})",
-                offset,
-                addr,
-                block.len()
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -174,34 +111,41 @@ mod tests {
 
     #[test]
     fn alloc() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let m0 = mem.alloc(10);
         let m1 = mem.alloc(20);
-        assert_eq!(mem.len(), 2);
-        assert_eq!(m0, 0);
-        assert_eq!(m1, 1);
+        assert_eq!(mem.len(), 3);
+        assert_eq!(m0, 1);
+        assert_eq!(m1, 2);
     }
 
     #[test]
-    #[should_panic(expected = "0 has been deallocated")]
+    #[should_panic(expected = "1 has been deallocated")]
     fn free_err() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let m0 = mem.alloc(10);
         mem.free(m0);
         mem.read(m0, 1);
     }
 
     #[test]
-    #[should_panic(expected = "attempt to free unallocated address 0")]
+    #[should_panic(expected = "attempt to free unallocated address 1")]
     fn free_err2() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
+        mem.free(1);
+    }
+
+    #[test]
+    #[should_panic(expected = "tried to free memory at program location")]
+    fn free_err3() {
+        let mut mem = Mem::init(vec![]);
         mem.free(0);
     }
 
     #[test]
-    #[should_panic(expected = "attempt to free address 0 which is already free")]
+    #[should_panic(expected = "attempt to free address 1 which is already free")]
     fn double_free_err() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let m0 = mem.alloc(10);
         mem.free(m0);
         mem.free(m0);
@@ -209,7 +153,7 @@ mod tests {
 
     #[test]
     fn alloc_lowest() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
 
         let m0 = mem.alloc(10);
         let m1 = mem.alloc(20);
@@ -223,8 +167,8 @@ mod tests {
     }
 
     #[test]
-    fn len3() {
-        let mut mem = Mem::new();
+    fn len4() {
+        let mut mem = Mem::init(vec![]);
 
         let m0 = mem.alloc(10);
         let m1 = mem.alloc(20);
@@ -234,12 +178,12 @@ mod tests {
         mem.free(m1);
         mem.free(m2);
 
-        assert_eq!(mem.len(), 3);
+        assert_eq!(mem.len(), 4);
     }
 
     #[test]
-    fn len1() {
-        let mut mem = Mem::new();
+    fn len2() {
+        let mut mem = Mem::init(vec![]);
 
         let m0 = mem.alloc(10);
         mem.free(m0);
@@ -248,12 +192,12 @@ mod tests {
         mem.free(m1);
 
         mem.alloc(30);
-        assert_eq!(mem.len(), 1);
+        assert_eq!(mem.len(), 2);
     }
 
     #[test]
     fn init_with_zero() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
 
         let m0 = mem.alloc(10);
         for i in 0..10 {
@@ -264,7 +208,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn read_err_offset() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let m0 = mem.alloc(10);
         mem.read(m0, 10);
     }
@@ -272,7 +216,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn read_err_zero() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let m0 = mem.alloc(0);
         mem.read(m0, 0);
     }
@@ -280,13 +224,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn read_err_addr() {
-        let mem = Mem::new();
+        let mem = Mem::init(vec![]);
         mem.read(1, 0);
     }
 
     #[test]
     fn write_and_read() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         let block0 = mem.alloc(10);
         mem.write(block0, 0, 384);
         assert_eq!(mem.read(block0, 0), &384);
@@ -295,7 +239,7 @@ mod tests {
     #[test]
     #[ignore]
     fn fill_all_memory() {
-        let mut mem = Mem::new();
+        let mut mem = Mem::init(vec![]);
         for _ in 0..=u32::MAX {
             mem.alloc(1);
         }

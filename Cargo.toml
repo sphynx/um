@@ -1,9 +1,8 @@
 [package]
 name = "um"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["Ivan Veselov <veselov@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 byteorder = "1.3.1"
-ncurses = "5.99.0"
