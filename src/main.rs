@@ -42,7 +42,7 @@ impl Machine {
         let mut input = String::new();
         loop {
             let word = self.mem.read(0, self.ip);
-            let op = parse_op(*word);
+            let op = Op::parse(*word);
 
             match op {
                 Op::CondMov(a, b, c) => {
@@ -92,12 +92,15 @@ impl Machine {
 
                 Op::Output(c) => {
                     let chr = self.reg[c];
+
                     if chr > 255 {
                         panic!("vm: character for output > 255: {}", chr);
                     }
-                    // FIXME: handle errors better
-                    io::stdout().write_u8(chr as u8).unwrap();
-                    io::stdout().flush().unwrap();
+
+                    io::stdout()
+                        .write_u8(chr as u8)
+                        .and_then(|()| io::stdout().flush())
+                        .expect("vm: writing character failed");
                 }
 
                 Op::Input(c) => {
@@ -152,31 +155,33 @@ enum Op {
     Mov(Reg, u32),
 }
 
-fn parse_op(v: u32) -> Op {
-    let code = v >> 28;
-    let a = ((v & 0b111000000_u32) >> 6) as usize;
-    let b = ((v & 0b111000_u32) >> 3) as usize;
-    let c = (v & 0b111_u32) as usize;
-    match code {
-        0 => Op::CondMov(a, b, c),
-        1 => Op::MemRead(a, b, c),
-        2 => Op::MemWrite(a, b, c),
-        3 => Op::Add(a, b, c),
-        4 => Op::Mul(a, b, c),
-        5 => Op::Div(a, b, c),
-        6 => Op::Nand(a, b, c),
-        7 => Op::Halt,
-        8 => Op::Alloc(b, c),
-        9 => Op::Free(c),
-        10 => Op::Output(c),
-        11 => Op::Input(c),
-        12 => Op::LoadProgram(b, c),
-        13 => {
-            let a = ((v >> 25) & 0b111_u32) as usize;
-            let val = v & 0x01FFFFFF_u32;
-            Op::Mov(a, val)
+impl Op {
+    fn parse(v: u32) -> Op {
+        let code = v >> 28;
+        let a = ((v & 0b111000000_u32) >> 6) as usize;
+        let b = ((v & 0b111000_u32) >> 3) as usize;
+        let c = (v & 0b111_u32) as usize;
+        match code {
+            0 => Op::CondMov(a, b, c),
+            1 => Op::MemRead(a, b, c),
+            2 => Op::MemWrite(a, b, c),
+            3 => Op::Add(a, b, c),
+            4 => Op::Mul(a, b, c),
+            5 => Op::Div(a, b, c),
+            6 => Op::Nand(a, b, c),
+            7 => Op::Halt,
+            8 => Op::Alloc(b, c),
+            9 => Op::Free(c),
+            10 => Op::Output(c),
+            11 => Op::Input(c),
+            12 => Op::LoadProgram(b, c),
+            13 => {
+                let a = ((v >> 25) & 0b111_u32) as usize;
+                let val = v & 0x01FFFFFF_u32;
+                Op::Mov(a, val)
+            }
+            _ => panic!("vm: unexpected op code: {}", code),
         }
-        _ => panic!("Unexpected op code: {}", code),
     }
 }
 
