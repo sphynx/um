@@ -1,3 +1,5 @@
+SHELL = /bin/bash
+
 .PHONY: run run2
 
 UM = target/release/um
@@ -29,4 +31,4 @@ yang:
 	cat yang.script - | $(UM) prog.um
 
 score:
-	cat score1.script publications.txt score2.script | $(UM) prog.um
+	cat score.script publications.txt <(printf "\n") | $(UM) prog.um
